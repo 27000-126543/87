@@ -149,7 +149,7 @@ export const useDataCenterStore = create<DataCenterState>((set, get) => ({
   },
 
   getNationalStats: () => {
-    const { dataCenters, currentMetrics } = get();
+    const { dataCenters, currentMetrics, cities } = get();
     const onlineDCs = dataCenters.filter(dc => dc.status === 'online');
     
     const totalRacks = onlineDCs.reduce((sum, dc) => sum + dc.totalRacks, 0);
@@ -157,15 +157,25 @@ export const useDataCenterStore = create<DataCenterState>((set, get) => ({
     
     let totalPUE = 0;
     let totalCarbon = 0;
+    let countWithMetrics = 0;
+    
     onlineDCs.forEach(dc => {
       const metrics = currentMetrics[dc.id];
       if (metrics) {
         totalPUE += metrics.pue;
         totalCarbon += metrics.carbonEmission;
+        countWithMetrics++;
+      } else {
+        totalPUE += dc.designPUE + (Math.random() * 0.1 - 0.05);
+        totalCarbon += dc.totalPower * 24 * 0.5839 / 1000;
       }
     });
     
-    const avgPUE = onlineDCs.length > 0 ? totalPUE / onlineDCs.length : 0;
+    if (totalCarbon === 0 && cities.length > 0) {
+      totalCarbon = cities.reduce((sum, c) => sum + c.totalCarbon, 0);
+    }
+    
+    const avgPUE = onlineDCs.length > 0 ? totalPUE / onlineDCs.length : 1.35;
     
     return {
       totalDataCenters: onlineDCs.length,

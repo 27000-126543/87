@@ -19,7 +19,7 @@ interface UserState {
   updateUser: (id: string, user: Partial<User>) => void;
   deleteUser: (id: string) => void;
   hasPermission: (roles: string[]) => boolean;
-  canAccessDataCenter: (dataCenterId: string) => boolean;
+  canAccessDataCenter: (dataCenterId: string, dataCenters?: any[]) => boolean;
 }
 
 export const useUserStore = create<UserState>()(
@@ -91,11 +91,17 @@ export const useUserStore = create<UserState>()(
         return roles.some(r => roleHierarchy.indexOf(r) <= userLevel);
       },
 
-      canAccessDataCenter: (dataCenterId) => {
+      canAccessDataCenter: (dataCenterId, dataCenters) => {
         const { currentUser } = get();
         if (!currentUser) return false;
         if (currentUser.role === 'GROUP_ADMIN') return true;
-        if (currentUser.role === 'REGION_MANAGER') return true;
+        if (currentUser.role === 'REGION_MANAGER') {
+          if (!dataCenters || dataCenters.length === 0) {
+            return true;
+          }
+          const dc = dataCenters.find(d => d.id === dataCenterId);
+          return dc ? dc.region === currentUser.region : false;
+        }
         return currentUser.dataCenterIds?.includes(dataCenterId) || false;
       },
     }),

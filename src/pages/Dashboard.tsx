@@ -43,16 +43,19 @@ export default function Dashboard() {
     selectCity,
     selectDataCenter,
     getNationalStats,
+    fetchDataCenters,
     fetchEnergyTrend,
     fetchCarbonTrend,
+    fetchCurrentMetrics,
     energyTrends,
     carbonTrends,
+    currentMetrics,
   } = useDataCenterStore();
   const { getStats, alerts } = useAlertStore();
   const { metrics, isConnected } = useAllRealtimeData();
   const { canAccessDataCenter } = usePermission();
 
-  const nationalStats = useMemo(() => getNationalStats(), [getNationalStats]);
+  const nationalStats = useMemo(() => getNationalStats(), [getNationalStats, metrics, currentMetrics]);
   const alertStats = useMemo(() => getStats(), [getStats]);
 
   const visibleDataCenters = useMemo(() => {
@@ -65,6 +68,16 @@ export default function Dashboard() {
   }, [cities, visibleDataCenters]);
 
   useEffect(() => {
+    const loadData = async () => {
+      await fetchDataCenters();
+      visibleDataCenters.forEach(dc => {
+        fetchCurrentMetrics(dc.id);
+      });
+    };
+    loadData();
+  }, [fetchDataCenters, fetchCurrentMetrics, visibleDataCenters.length]);
+
+  useEffect(() => {
     if (selectedDataCenter) {
       fetchEnergyTrend(selectedDataCenter.id, 30);
       fetchCarbonTrend(selectedDataCenter.id, 30);
@@ -72,10 +85,13 @@ export default function Dashboard() {
   }, [selectedDataCenter, fetchEnergyTrend, fetchCarbonTrend]);
 
   const handleCityClick = (city: any) => {
-    selectCity(city);
-    const dcInCity = visibleDataCenters.find(dc => dc.city === city.id);
-    if (dcInCity) {
-      selectDataCenter(dcInCity);
+    const cityData = visibleCities.find(c => c.id === city.id);
+    if (cityData) {
+      selectCity(cityData);
+      const dcInCity = visibleDataCenters.find(dc => dc.city === cityData.id);
+      if (dcInCity) {
+        selectDataCenter(dcInCity);
+      }
     }
   };
 

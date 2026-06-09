@@ -4,7 +4,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-001',
     name: '北京亦庄数据中心',
-    city: '北京',
+    city: 'city-001',
     region: 'north',
     address: '北京市亦庄经济技术开发区',
     totalRacks: 1200,
@@ -16,7 +16,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-002',
     name: '上海张江数据中心',
-    city: '上海',
+    city: 'city-002',
     region: 'east',
     address: '上海市浦东新区张江高科技园区',
     totalRacks: 1500,
@@ -28,7 +28,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-003',
     name: '深圳前海数据中心',
-    city: '深圳',
+    city: 'city-003',
     region: 'south',
     address: '深圳市南山区前海自贸区',
     totalRacks: 1000,
@@ -40,7 +40,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-004',
     name: '成都西部数据中心',
-    city: '成都',
+    city: 'city-004',
     region: 'west',
     address: '成都市高新区天府大道',
     totalRacks: 800,
@@ -52,7 +52,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-005',
     name: '武汉光谷数据中心',
-    city: '武汉',
+    city: 'city-005',
     region: 'central',
     address: '武汉市东湖高新区光谷大道',
     totalRacks: 600,
@@ -64,7 +64,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-006',
     name: '广州南沙数据中心',
-    city: '广州',
+    city: 'city-006',
     region: 'south',
     address: '广州市南沙区',
     totalRacks: 900,
@@ -76,7 +76,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-007',
     name: '杭州萧山数据中心',
-    city: '杭州',
+    city: 'city-007',
     region: 'east',
     address: '杭州市萧山区',
     totalRacks: 700,
@@ -88,7 +88,7 @@ export const mockDataCenters: DataCenter[] = [
   {
     id: 'dc-008',
     name: '天津滨海数据中心',
-    city: '天津',
+    city: 'city-008',
     region: 'north',
     address: '天津市滨海新区',
     totalRacks: 1100,

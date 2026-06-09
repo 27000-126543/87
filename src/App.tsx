@@ -61,6 +61,7 @@ export default function App() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="data-center/:id" element={<DataCenterDetail />} />
               <Route path="alerts" element={<Alerts />} />
+              <Route path="alerts/:id" element={<Alerts />} />
               <Route path="reports" element={<Reports />} />
               <Route path="capacity" element={<CapacityPlanning />} />
               <Route path="health-reports" element={<HealthReports />} />

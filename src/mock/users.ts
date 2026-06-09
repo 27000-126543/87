@@ -123,8 +123,12 @@ export const hasPermission = (user: User, requiredRole: string[]): boolean => {
   return requiredRole.some(r => roleHierarchy.indexOf(r) <= userLevel);
 };
 
-export const canAccessDataCenter = (user: User, dataCenterId: string): boolean => {
+export const canAccessDataCenter = (user: User, dataCenterId: string, dataCenters?: any[]): boolean => {
   if (user.role === 'GROUP_ADMIN') return true;
-  if (user.role === 'REGION_MANAGER') return true;
+  if (user.role === 'REGION_MANAGER') {
+    if (!dataCenters) return true;
+    const dc = dataCenters.find(d => d.id === dataCenterId);
+    return dc ? dc.region === user.region : false;
+  }
   return user.dataCenterIds?.includes(dataCenterId) || false;
 };

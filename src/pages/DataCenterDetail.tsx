@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Button, Card, Row, Col, Badge, Tabs, Tag, Table, Space } from 'antd';
+import { Button, Card, Row, Col, Badge, Tabs, Tag, Table, Space, Empty, Result } from 'antd';
 import {
   ArrowLeft,
   Server,
@@ -12,6 +12,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { useDataCenterStore } from '@/store/dataCenterStore';
+import { usePermission } from '@/hooks/usePermission';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
 import MetricCard from '@/components/common/MetricCard';
 import LineChart from '@/components/charts/LineChart';
@@ -37,6 +38,7 @@ export default function DataCenterDetail() {
   const [selectedRack, setSelectedRack] = useState<Rack | null>(null);
 
   const {
+    dataCenters,
     fetchDataCenterById,
     fetchRacks,
     fetchMetrics,
@@ -50,7 +52,13 @@ export default function DataCenterDetail() {
     energyTrends,
   } = useDataCenterStore();
 
+  const { canAccessDataCenter } = usePermission();
   const { latestData, metrics: realtimeMetrics } = useRealtimeData(id || null);
+
+  const hasPermission = useMemo(() => {
+    if (!id) return false;
+    return canAccessDataCenter(id);
+  }, [id, canAccessDataCenter]);
 
   const dataCenter = useMemo(() => {
     if (!id) return null;
@@ -137,6 +145,23 @@ export default function DataCenterDetail() {
       fetchRackTelemetry(id, selectedRack.id);
     }
   }, [id, selectedRack, fetchRackTelemetry]);
+
+  if (!hasPermission) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Result
+          status="403"
+          title="403"
+          subTitle="抱歉，您没有权限访问该机房"
+          extra={
+            <Button type="primary" onClick={() => navigate('/dashboard')}>
+              返回看板
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   if (!dataCenter) {
     return (

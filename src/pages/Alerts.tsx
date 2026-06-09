@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Card,
@@ -47,8 +48,11 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 export default function Alerts() {
+  const { id: alertId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const {
     alerts,
+    fetchAlerts,
     getFilteredAlerts,
     getStats,
     updateAlertStatus,
@@ -67,8 +71,9 @@ export default function Alerts() {
   const { canAccessDataCenter, hasPermission } = usePermission();
 
   const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [resolveModalVisible, setResolveModalVisible] = useState(false);
   const [escalateModalVisible, setEscalateModalVisible] = useState(false);
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [form] = Form.useForm();
   const [approvalForm] = Form.useForm();
@@ -79,6 +84,20 @@ export default function Alerts() {
   const visibleAlerts = useMemo(() => {
     return getFilteredAlerts().filter(alert => canAccessDataCenter(alert.dataCenterId));
   }, [getFilteredAlerts, canAccessDataCenter]);
+
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
+
+  useEffect(() => {
+    if (alertId) {
+      const alert = visibleAlerts.find(a => a.id === alertId);
+      if (alert) {
+        selectAlert(alert);
+        setDetailModalVisible(true);
+      }
+    }
+  }, [alertId, visibleAlerts, selectAlert]);
 
   const getDataCenterName = (id: string) => {
     return dataCenters.find(dc => dc.id === id)?.name || '未知机房';
@@ -102,7 +121,7 @@ export default function Alerts() {
   const handleResolve = (alert: Alert) => {
     form.setFieldsValue({ resolution: '' });
     selectAlert(alert);
-    setEscalateModalVisible(true);
+    setResolveModalVisible(true);
   };
 
   const handleEscalate = (alert: Alert) => {
@@ -126,7 +145,8 @@ export default function Alerts() {
       if (selectedAlert) {
         updateAlertStatus(selectedAlert.id, 'RESOLVED', values.resolution);
         message.success('告警已解决');
-        setEscalateModalVisible(false);
+        setResolveModalVisible(false);
+        form.resetFields();
       }
     });
   };
@@ -402,7 +422,12 @@ export default function Alerts() {
           </div>
         }
         open={detailModalVisible}
-        onCancel={() => setDetailModalVisible(false)}
+        onCancel={() => {
+          setDetailModalVisible(false);
+          if (alertId) {
+            navigate('/alerts', { replace: true });
+          }
+        }}
         footer={null}
         width={700}
       >
@@ -513,7 +538,7 @@ export default function Alerts() {
       </Modal>
 
       <Modal
-        title="处理告警"
+        title="升级告警"
         open={escalateModalVisible}
         onCancel={() => setEscalateModalVisible(false)}
         footer={[
@@ -523,13 +548,41 @@ export default function Alerts() {
           <Button
             key="escalate"
             danger
+            type="primary"
             onClick={handleConfirmEscalate}
             icon={<ArrowUp className="w-4 h-4" />}
           >
-            升级告警
+            确认升级
+          </Button>,
+        ]}
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-lg bg-danger/10 border border-danger/30">
+            <p className="text-sm text-danger font-medium">
+              升级告警将启动三级审批流程：
+            </p>
+            <ul className="mt-2 text-sm text-text-secondary space-y-1">
+              <li>• 第一步：运维工程师确认</li>
+              <li>• 第二步：数据中心经理复核</li>
+              <li>• 第三步：集团CTO批准</li>
+            </ul>
+          </div>
+          <p className="text-sm text-text-tertiary">
+            升级后，冷却策略调整或负载迁移需经三级审批后方可执行。
+          </p>
+        </div>
+      </Modal>
+
+      <Modal
+        title="解决告警"
+        open={resolveModalVisible}
+        onCancel={() => setResolveModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setResolveModalVisible(false)}>
+            取消
           </Button>,
           <Button key="resolve" type="primary" onClick={handleConfirmResolve}>
-            标记解决
+            确认解决
           </Button>,
         ]}
       >

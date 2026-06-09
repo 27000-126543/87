@@ -1,9 +1,15 @@
 import { useMemo } from 'react';
 import { useUserStore } from '@/store/userStore';
+import { useDataCenterStore } from '@/store/dataCenterStore';
 import { UserRole } from '@/types';
 
 export const usePermission = () => {
-  const { currentUser, hasPermission, canAccessDataCenter } = useUserStore();
+  const { currentUser, hasPermission, canAccessDataCenter: userCanAccessDataCenter } = useUserStore();
+  const { dataCenters } = useDataCenterStore();
+
+  const canAccessDataCenter = useMemo(() => {
+    return (dataCenterId: string) => userCanAccessDataCenter(dataCenterId, dataCenters);
+  }, [userCanAccessDataCenter, dataCenters]);
 
   const role = useMemo(() => currentUser?.role, [currentUser]);
 

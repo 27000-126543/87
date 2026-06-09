@@ -70,6 +70,12 @@ export default function CapacityPlanning() {
     return dataCenters.filter(dc => canAccessDataCenter(dc.id));
   }, [dataCenters, canAccessDataCenter]);
 
+  const visibleExpansionPlans = useMemo(() => {
+    return expansionPlans
+      .filter(p => canAccessDataCenter(p.dataCenterId))
+      .sort((a, b) => b.uploadTime - a.uploadTime);
+  }, [expansionPlans, canAccessDataCenter]);
+
   useEffect(() => {
     fetchExpansionPlans();
   }, [fetchExpansionPlans]);
@@ -79,6 +85,20 @@ export default function CapacityPlanning() {
       fetchEnergyTrend(selectedDataCenterId, 90);
     }
   }, [selectedDataCenterId, fetchEnergyTrend]);
+
+  const findValueByKeys = (obj: any, keys: string[]): any => {
+    const objKeys = Object.keys(obj);
+    for (const key of keys) {
+      const normalizedKey = key.toLowerCase().replace(/[\s()（）]/g, '');
+      const foundKey = objKeys.find(k => 
+        k.toLowerCase().replace(/[\s()（）]/g, '') === normalizedKey
+      );
+      if (foundKey && obj[foundKey] !== undefined && obj[foundKey] !== null) {
+        return obj[foundKey];
+      }
+    }
+    return undefined;
+  };
 
   const handleFileUpload = (file: File) => {
     const reader = new FileReader();
@@ -92,9 +112,9 @@ export default function CapacityPlanning() {
 
         if (jsonData.length > 0) {
           const firstRow = jsonData[0] as any;
-          const rackCount = firstRow['机柜数量'] || firstRow['rackCount'] || firstRow['数量'] || 0;
-          const powerPerRack = firstRow['单柜功率'] || firstRow['powerPerRack'] || firstRow['功率'] || 6000;
-          const totalPower = rackCount * powerPerRack;
+          const rackCount = findValueByKeys(firstRow, ['机柜数量', 'rackCount', '数量', '机柜数', 'rack_count']) || 0;
+          const powerPerRack = findValueByKeys(firstRow, ['单柜功率(W)', '单柜功率', 'powerPerRack', '功率', '单柜功率w', 'power_per_rack', 'power']) || 6000;
+          const totalPower = Number(rackCount) * Number(powerPerRack);
 
           setUploadedData({
             rackCount,
@@ -451,7 +471,7 @@ export default function CapacityPlanning() {
           <TabPane tab="历史计划" key="history">
             <Table
               columns={columns}
-              dataSource={expansionPlans}
+              dataSource={visibleExpansionPlans}
               rowKey="id"
               pagination={{ pageSize: 10 }}
               scroll={{ x: 1000 }}
