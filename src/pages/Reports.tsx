@@ -26,6 +26,7 @@ import {
   Leaf,
 } from 'lucide-react';
 import { useDataCenterStore } from '@/store/dataCenterStore';
+import { useUserStore } from '@/store/userStore';
 import { usePermission } from '@/hooks/usePermission';
 import LineChart from '@/components/charts/LineChart';
 import BarChart from '@/components/charts/BarChart';
@@ -64,6 +65,7 @@ export default function Reports() {
     timeRange,
     setTimeRange,
   } = useDataCenterStore();
+  const { currentUser } = useUserStore();
   const { canAccessDataCenter } = usePermission();
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
 
@@ -75,6 +77,19 @@ export default function Reports() {
     const dcCityIds = new Set(visibleDataCenters.map(dc => dc.city));
     return cities.filter(c => dcCityIds.has(c.id));
   }, [cities, visibleDataCenters]);
+
+  useEffect(() => {
+    selectDataCenter(null);
+    setTimeRange('24h');
+    setDateRange(null);
+  }, [currentUser?.id, selectDataCenter, setTimeRange]);
+
+  useEffect(() => {
+    const visibleDCIds = visibleDataCenters.map(dc => dc.id);
+    if (selectedDataCenter && !visibleDCIds.includes(selectedDataCenter.id)) {
+      selectDataCenter(null);
+    }
+  }, [visibleDataCenters, selectedDataCenter, selectDataCenter]);
 
   const dcMetrics = useMemo(() => {
     if (!selectedDataCenter) return null;

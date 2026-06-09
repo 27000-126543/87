@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useDataCenterStore } from '@/store/dataCenterStore';
 import { useAlertStore } from '@/store/alertStore';
+import { useUserStore } from '@/store/userStore';
 import { useAllRealtimeData } from '@/hooks/useRealtimeData';
 import { usePermission } from '@/hooks/usePermission';
 import MetricCard from '@/components/common/MetricCard';
@@ -21,6 +22,7 @@ import HeatMap from '@/components/charts/HeatMap';
 import LineChart from '@/components/charts/LineChart';
 import BarChart from '@/components/charts/BarChart';
 import GaugeChart from '@/components/charts/GaugeChart';
+import { TrendPoint } from '@/types';
 import {
   formatPUE,
   formatPower,
@@ -42,7 +44,9 @@ export default function Dashboard() {
     selectedDataCenter,
     selectCity,
     selectDataCenter,
-    getNationalStats,
+    getStatsForDataCenters,
+    resetSelection,
+    clearInvalidSelection,
     fetchDataCenters,
     fetchEnergyTrend,
     fetchCarbonTrend,
@@ -51,12 +55,10 @@ export default function Dashboard() {
     carbonTrends,
     currentMetrics,
   } = useDataCenterStore();
-  const { getStats, alerts } = useAlertStore();
+  const { alerts } = useAlertStore();
+  const { currentUser } = useUserStore();
   const { metrics, isConnected } = useAllRealtimeData();
   const { canAccessDataCenter } = usePermission();
-
-  const nationalStats = useMemo(() => getNationalStats(), [getNationalStats, metrics, currentMetrics]);
-  const alertStats = useMemo(() => getStats(), [getStats]);
 
   const visibleDataCenters = useMemo(() => {
     return dataCenters.filter(dc => canAccessDataCenter(dc.id));
@@ -66,6 +68,26 @@ export default function Dashboard() {
     const dcCityIds = new Set(visibleDataCenters.map(dc => dc.city));
     return cities.filter(c => dcCityIds.has(c.id));
   }, [cities, visibleDataCenters]);
+
+  const stats = useMemo(() => {
+    if (selectedDataCenter) {
+      return getStatsForDataCenters([selectedDataCenter]);
+    } else if (selectedCity) {
+      const dcsInCity = visibleDataCenters.filter(dc => dc.city === selectedCity.id);
+      return getStatsForDataCenters(dcsInCity);
+    }
+    return getStatsForDataCenters(visibleDataCenters);
+  }, [selectedDataCenter, selectedCity, visibleDataCenters, getStatsForDataCenters, metrics, currentMetrics]);
+
+  useEffect(() => {
+    resetSelection();
+  }, [currentUser?.id, resetSelection]);
+
+  useEffect(() => {
+    const visibleDCIds = visibleDataCenters.map(dc => dc.id);
+    const visibleCityIds = visibleCities.map(c => c.id);
+    clearInvalidSelection(visibleDCIds, visibleCityIds);
+  }, [visibleDataCenters, visibleCities, clearInvalidSelection]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -81,8 +103,19 @@ export default function Dashboard() {
     if (selectedDataCenter) {
       fetchEnergyTrend(selectedDataCenter.id, 30);
       fetchCarbonTrend(selectedDataCenter.id, 30);
+    } else if (selectedCity) {
+      const dcsInCity = visibleDataCenters.filter(dc => dc.city === selectedCity.id);
+      dcsInCity.forEach(dc => {
+        fetchEnergyTrend(dc.id, 30);
+        fetchCarbonTrend(dc.id, 30);
+      });
+    } else {
+      visibleDataCenters.forEach(dc => {
+        fetchEnergyTrend(dc.id, 30);
+        fetchCarbonTrend(dc.id, 30);
+      });
     }
-  }, [selectedDataCenter, fetchEnergyTrend, fetchCarbonTrend]);
+  }, [selectedDataCenter, selectedCity, visibleDataCenters, fetchEnergyTrend, fetchCarbonTrend]);
 
   const handleCityClick = (city: any) => {
     const cityData = visibleCities.find(c => c.id === city.id);
@@ -99,15 +132,6 @@ export default function Dashboard() {
     navigate(`/data-center/${dc.id}`);
   };
 
-  const pueTrendData = useMemo(() => {
-    if (!selectedDataCenter) return [];
-    const trend = energyTrends[selectedDataCenter.id] || [];
-    return trend.map(t => ({
-      timestamp: t.timestamp,
-      value: t.value / 1000 + 1.2,
-    }));
-  }, [selectedDataCenter, energyTrends]);
-
   const carbonRankingData = useMemo(() => {
     return visibleCities
       .map(city => ({
@@ -119,17 +143,100 @@ export default function Dashboard() {
   }, [visibleCities]);
 
   const avgPUE = useMemo(() => {
-    if (selectedDataCenter && metrics[selectedDataCenter.id]) {
-      return metrics[selectedDataCenter.id]!.pue;
+    if (selectedDataCenter) {
+      const m = metrics[selectedDataCenter.id] || currentMetrics[selectedDataCenter.id];
+      if (m) return m.pue;
     }
-    return nationalStats.avgPUE;
-  }, [selectedDataCenter, metrics, nationalStats.avgPUE]);
+    return stats.avgPUE;
+  }, [selectedDataCenter, metrics, currentMetrics, stats.avgPUE]);
+
+  const visibleAlerts = useMemo(() => {
+    return alerts.filter(a => canAccessDataCenter(a.dataCenterId));
+  }, [alerts, canAccessDataCenter]);
 
   const pendingAlerts = useMemo(() => {
-    return alerts.filter(a =>
+    return visibleAlerts.filter(a =>
       a.status === 'PENDING' || a.status === 'ACKNOWLEDGED' || a.status === 'ESCALATED'
     ).length;
-  }, [alerts]);
+  }, [visibleAlerts]);
+
+  const energyTrendData = useMemo(() => {
+    let trendData: TrendPoint[] = [];
+    
+    if (selectedDataCenter) {
+      trendData = energyTrends[selectedDataCenter.id] || [];
+    } else if (selectedCity) {
+      const dcsInCity = visibleDataCenters.filter(dc => dc.city === selectedCity.id);
+      dcsInCity.forEach(dc => {
+        const dcTrend = energyTrends[dc.id] || [];
+        if (trendData.length === 0) {
+          trendData = dcTrend.map(t => ({ ...t }));
+        } else {
+          dcTrend.forEach((t, i) => {
+            if (trendData[i]) {
+              trendData[i].value += t.value;
+            }
+          });
+        }
+      });
+    } else {
+      visibleDataCenters.forEach(dc => {
+        const dcTrend = energyTrends[dc.id] || [];
+        if (trendData.length === 0) {
+          trendData = dcTrend.map(t => ({ ...t }));
+        } else {
+          dcTrend.forEach((t, i) => {
+            if (trendData[i]) {
+              trendData[i].value += t.value;
+            }
+          });
+        }
+      });
+    }
+    
+    return trendData.map(t => ({
+      timestamp: t.timestamp,
+      value: t.value,
+    }));
+  }, [selectedDataCenter, selectedCity, visibleDataCenters, energyTrends]);
+
+  const pueTrendData = useMemo(() => {
+    let pueData: { timestamp: number; value: number }[] = [];
+    
+    if (selectedDataCenter) {
+      const trend = energyTrends[selectedDataCenter.id] || [];
+      pueData = trend.map(t => ({
+        timestamp: t.timestamp,
+        value: t.value / 1000 + 1.2,
+      }));
+    } else {
+      const relevantDCs = selectedCity 
+        ? visibleDataCenters.filter(dc => dc.city === selectedCity.id)
+        : visibleDataCenters;
+      
+      if (relevantDCs.length > 0) {
+        const firstDCTrend = energyTrends[relevantDCs[0].id] || [];
+        pueData = firstDCTrend.map((t, i) => {
+          let totalPUE = 0;
+          let count = 0;
+          relevantDCs.forEach(dc => {
+            const dcTrend = energyTrends[dc.id] || [];
+            if (dcTrend[i]) {
+              const m = metrics[dc.id] || currentMetrics[dc.id];
+              totalPUE += m ? m.pue : (dcTrend[i].value / 1000 + 1.2);
+              count++;
+            }
+          });
+          return {
+            timestamp: t.timestamp,
+            value: count > 0 ? totalPUE / count : 1.35,
+          };
+        });
+      }
+    }
+    
+    return pueData;
+  }, [selectedDataCenter, selectedCity, visibleDataCenters, energyTrends, metrics, currentMetrics]);
 
   return (
     <div className="space-y-6">
@@ -196,8 +303,8 @@ export default function Dashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <MetricCard
-            title="在线机房"
-            value={nationalStats.totalDataCenters}
+            title={selectedDataCenter ? selectedDataCenter.name : selectedCity ? `${selectedCity.name}机房` : '在线机房'}
+            value={stats.totalDataCenters}
             unit="个"
             icon={<Building2 className="w-5 h-5" />}
             color="primary"
@@ -208,7 +315,7 @@ export default function Dashboard() {
         <Col xs={24} sm={12} lg={6}>
           <MetricCard
             title="机柜总数"
-            value={nationalStats.totalRacks}
+            value={stats.totalRacks}
             unit="个"
             icon={<Server className="w-5 h-5" />}
             color="purple"
@@ -219,9 +326,9 @@ export default function Dashboard() {
         <Col xs={24} sm={12} lg={6}>
           <MetricCard
             title="平均PUE"
-            value={formatPUE(nationalStats.avgPUE)}
+            value={formatPUE(stats.avgPUE)}
             icon={<Gauge className="w-5 h-5" />}
-            color={nationalStats.avgPUE < 1.4 ? 'success' : nationalStats.avgPUE < 1.5 ? 'warning' : 'danger'}
+            color={stats.avgPUE < 1.4 ? 'success' : stats.avgPUE < 1.5 ? 'warning' : 'danger'}
             trend="down"
             change={1.2}
           />
@@ -229,7 +336,7 @@ export default function Dashboard() {
         <Col xs={24} sm={12} lg={6}>
           <MetricCard
             title="今日碳排放"
-            value={formatCarbon(nationalStats.totalCarbon)}
+            value={formatCarbon(stats.totalCarbon)}
             icon={<TrendingUp className="w-5 h-5" />}
             color="danger"
             trend="up"
@@ -243,7 +350,7 @@ export default function Dashboard() {
           <Card className="glass-card border-border/50 h-full">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">
-                全国能效热力图
+                {selectedCity ? `${selectedCity.name} - ` : selectedDataCenter ? `${selectedDataCenter.name} - ` : ''}能效热力图
               </h3>
               <div className="flex items-center gap-4 text-xs text-text-tertiary">
                 <div className="flex items-center gap-1">
@@ -278,7 +385,7 @@ export default function Dashboard() {
               min={1.0}
               max={2.0}
               title="PUE"
-              subtitle={selectedDataCenter?.name || '全国平均'}
+              subtitle={selectedDataCenter?.name || selectedCity?.name || '平均'}
               thresholds={[1.3, 1.5, 1.7]}
               height={300}
             />
@@ -286,7 +393,7 @@ export default function Dashboard() {
               <div className="text-center p-3 rounded-lg bg-background-tertiary/50">
                 <p className="text-xs text-text-tertiary mb-1">总功率</p>
                 <p className="text-lg font-bold text-primary font-mono">
-                  {formatPower(nationalStats.totalPower)}
+                  {formatPower(stats.totalPower)}
                 </p>
               </div>
               <div className="text-center p-3 rounded-lg bg-background-tertiary/50">
@@ -305,7 +412,7 @@ export default function Dashboard() {
           <Card className="glass-card border-border/50">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">
-                {selectedDataCenter ? `${selectedDataCenter.name} - PUE趋势` : '全国平均PUE趋势'}
+                {selectedDataCenter ? `${selectedDataCenter.name} - ` : selectedCity ? `${selectedCity.name} - ` : ''}PUE趋势
               </h3>
               <Tag color="blue">近30天</Tag>
             </div>

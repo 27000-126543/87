@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAlertStore } from '@/store/alertStore';
 import { useRealtimeStore } from '@/store/realtimeStore';
+import { usePermission } from '@/hooks/usePermission';
 import { formatDateTime } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +20,7 @@ export default function Header() {
   const [showNotifications, setShowNotifications] = useState(false);
   const { getStats, alerts } = useAlertStore();
   const { isConnected } = useRealtimeStore();
+  const { canAccessDataCenter } = usePermission();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -29,11 +31,28 @@ export default function Header() {
     return () => clearInterval(timer);
   }, []);
 
-  const stats = getStats();
-  const activeAlerts = alerts.filter(a => 
-    a.status === 'PENDING' || a.status === 'ACKNOWLEDGED' || 
-    a.status === 'PROCESSING' || a.status === 'ESCALATED'
-  );
+  const visibleAlerts = useMemo(() => {
+    return alerts.filter(a => canAccessDataCenter(a.dataCenterId));
+  }, [alerts, canAccessDataCenter]);
+
+  const stats = useMemo(() => {
+    const visible = visibleAlerts;
+    return {
+      active: visible.filter(a => ['PENDING', 'ACKNOWLEDGED', 'PROCESSING', 'ESCALATED'].includes(a.status)).length,
+      pending: visible.filter(a => a.status === 'PENDING').length,
+      processing: visible.filter(a => ['ACKNOWLEDGED', 'PROCESSING'].includes(a.status)).length,
+      escalated: visible.filter(a => a.status === 'ESCALATED').length,
+      resolved: visible.filter(a => a.status === 'RESOLVED').length,
+      total: visible.length,
+    };
+  }, [visibleAlerts]);
+
+  const activeAlerts = useMemo(() => {
+    return visibleAlerts.filter(a => 
+      a.status === 'PENDING' || a.status === 'ACKNOWLEDGED' || 
+      a.status === 'PROCESSING' || a.status === 'ESCALATED'
+    ).sort((a, b) => b.startTime - a.startTime);
+  }, [visibleAlerts]);
 
   const getPageTitle = () => {
     const path = location.pathname;

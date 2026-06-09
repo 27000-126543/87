@@ -37,6 +37,7 @@ import {
 import * as XLSX from 'xlsx';
 import { useDataCenterStore } from '@/store/dataCenterStore';
 import { useReportStore } from '@/store/reportStore';
+import { useUserStore } from '@/store/userStore';
 import { usePermission } from '@/hooks/usePermission';
 import LineChart from '@/components/charts/LineChart';
 import {
@@ -57,6 +58,7 @@ const { TabPane } = Tabs;
 export default function CapacityPlanning() {
   const { dataCenters, energyTrends, fetchEnergyTrend } = useDataCenterStore();
   const { expansionPlans, createExpansionPlan, fetchExpansionPlans, selectExpansionPlan, selectedExpansionPlan } = useReportStore();
+  const { currentUser } = useUserStore();
   const { canAccessDataCenter } = usePermission();
 
   const [form] = Form.useForm();
@@ -75,6 +77,22 @@ export default function CapacityPlanning() {
       .filter(p => canAccessDataCenter(p.dataCenterId))
       .sort((a, b) => b.uploadTime - a.uploadTime);
   }, [expansionPlans, canAccessDataCenter]);
+
+  useEffect(() => {
+    setSelectedDataCenterId('');
+    setUploadedData(null);
+    setDetailModalVisible(false);
+    selectExpansionPlan(null);
+    form.resetFields();
+  }, [currentUser?.id, selectExpansionPlan, form]);
+
+  useEffect(() => {
+    const visibleDCIds = visibleDataCenters.map(dc => dc.id);
+    if (selectedDataCenterId && !visibleDCIds.includes(selectedDataCenterId)) {
+      setSelectedDataCenterId('');
+      setUploadedData(null);
+    }
+  }, [visibleDataCenters, selectedDataCenterId]);
 
   useEffect(() => {
     fetchExpansionPlans();

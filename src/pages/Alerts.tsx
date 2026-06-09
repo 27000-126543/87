@@ -79,11 +79,20 @@ export default function Alerts() {
   const [approvalForm] = Form.useForm();
   const [assignForm] = Form.useForm();
 
-  const stats = useMemo(() => getStats(), [getStats]);
-
   const visibleAlerts = useMemo(() => {
     return getFilteredAlerts().filter(alert => canAccessDataCenter(alert.dataCenterId));
   }, [getFilteredAlerts, canAccessDataCenter]);
+
+  useEffect(() => {
+    setFilterLevel('all');
+    setFilterStatus('all');
+    selectAlert(null);
+    setDetailModalVisible(false);
+    setResolveModalVisible(false);
+    setEscalateModalVisible(false);
+    setApprovalModalVisible(false);
+    setAssignModalVisible(false);
+  }, [currentUser?.id, setFilterLevel, setFilterStatus, selectAlert]);
 
   useEffect(() => {
     fetchAlerts();
@@ -95,9 +104,13 @@ export default function Alerts() {
       if (alert) {
         selectAlert(alert);
         setDetailModalVisible(true);
+      } else {
+        navigate('/alerts', { replace: true });
       }
+    } else {
+      setDetailModalVisible(false);
     }
-  }, [alertId, visibleAlerts, selectAlert]);
+  }, [alertId, visibleAlerts, selectAlert, navigate]);
 
   const getDataCenterName = (id: string) => {
     return dataCenters.find(dc => dc.id === id)?.name || '未知机房';

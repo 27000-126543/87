@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { useDataCenterStore } from '@/store/dataCenterStore';
 import { useReportStore } from '@/store/reportStore';
+import { useUserStore } from '@/store/userStore';
 import { usePermission } from '@/hooks/usePermission';
 import LineChart from '@/components/charts/LineChart';
 import {
@@ -57,6 +58,7 @@ const { TabPane } = Tabs;
 export default function HealthReports() {
   const { dataCenters } = useDataCenterStore();
   const { reports, fetchReports, generateReport, selectReport, selectedReport, loading } = useReportStore();
+  const { currentUser } = useUserStore();
   const { canAccessDataCenter, hasPermission } = usePermission();
 
   const [selectedDataCenterId, setSelectedDataCenterId] = useState<string>('');
@@ -76,6 +78,19 @@ export default function HealthReports() {
       .filter(r => canAccessDataCenter(r.dataCenterId))
       .sort((a, b) => b.generatedAt - a.generatedAt);
   }, [reports, selectedDataCenterId, canAccessDataCenter]);
+
+  useEffect(() => {
+    setSelectedDataCenterId('');
+    setDetailModalVisible(false);
+    selectReport(null);
+  }, [currentUser?.id, selectReport]);
+
+  useEffect(() => {
+    const visibleDCIds = visibleDataCenters.map(dc => dc.id);
+    if (selectedDataCenterId && !visibleDCIds.includes(selectedDataCenterId)) {
+      setSelectedDataCenterId('');
+    }
+  }, [visibleDataCenters, selectedDataCenterId]);
 
   useEffect(() => {
     fetchReports();

@@ -33,6 +33,15 @@ interface DataCenterState {
   selectDataCenter: (dataCenter: DataCenter | null) => void;
   selectCity: (city: CityData | null) => void;
   setTimeRange: (timeRange: TimeRange) => void;
+  resetSelection: () => void;
+  clearInvalidSelection: (visibleDataCenterIds: string[], visibleCityIds: string[]) => void;
+  getStatsForDataCenters: (dataCenters: DataCenter[]) => {
+    totalDataCenters: number;
+    totalRacks: number;
+    avgPUE: number;
+    totalCarbon: number;
+    totalPower: number;
+  };
   getNationalStats: () => {
     totalDataCenters: number;
     totalRacks: number;
@@ -148,8 +157,32 @@ export const useDataCenterStore = create<DataCenterState>((set, get) => ({
     set({ timeRange });
   },
 
-  getNationalStats: () => {
-    const { dataCenters, currentMetrics, cities } = get();
+  resetSelection: () => {
+    set({ selectedDataCenter: null, selectedCity: null });
+  },
+
+  clearInvalidSelection: (visibleDataCenterIds, visibleCityIds) => {
+    const { selectedDataCenter, selectedCity } = get();
+    let newSelectedDataCenter = selectedDataCenter;
+    let newSelectedCity = selectedCity;
+    
+    if (selectedDataCenter && !visibleDataCenterIds.includes(selectedDataCenter.id)) {
+      newSelectedDataCenter = null;
+    }
+    if (selectedCity && !visibleCityIds.includes(selectedCity.id)) {
+      newSelectedCity = null;
+    }
+    
+    if (newSelectedDataCenter !== selectedDataCenter || newSelectedCity !== selectedCity) {
+      set({ 
+        selectedDataCenter: newSelectedDataCenter, 
+        selectedCity: newSelectedCity 
+      });
+    }
+  },
+
+  getStatsForDataCenters: (dataCenters) => {
+    const { currentMetrics, cities } = get();
     const onlineDCs = dataCenters.filter(dc => dc.status === 'online');
     
     const totalRacks = onlineDCs.reduce((sum, dc) => sum + dc.totalRacks, 0);
@@ -157,14 +190,12 @@ export const useDataCenterStore = create<DataCenterState>((set, get) => ({
     
     let totalPUE = 0;
     let totalCarbon = 0;
-    let countWithMetrics = 0;
     
     onlineDCs.forEach(dc => {
       const metrics = currentMetrics[dc.id];
       if (metrics) {
         totalPUE += metrics.pue;
         totalCarbon += metrics.carbonEmission;
-        countWithMetrics++;
       } else {
         totalPUE += dc.designPUE + (Math.random() * 0.1 - 0.05);
         totalCarbon += dc.totalPower * 24 * 0.5839 / 1000;
@@ -172,7 +203,10 @@ export const useDataCenterStore = create<DataCenterState>((set, get) => ({
     });
     
     if (totalCarbon === 0 && cities.length > 0) {
-      totalCarbon = cities.reduce((sum, c) => sum + c.totalCarbon, 0);
+      const visibleCityIds = new Set(onlineDCs.map(dc => dc.city));
+      totalCarbon = cities
+        .filter(c => visibleCityIds.has(c.id))
+        .reduce((sum, c) => sum + c.totalCarbon, 0);
     }
     
     const avgPUE = onlineDCs.length > 0 ? totalPUE / onlineDCs.length : 1.35;
@@ -184,5 +218,10 @@ export const useDataCenterStore = create<DataCenterState>((set, get) => ({
       totalCarbon,
       totalPower,
     };
+  },
+
+  getNationalStats: () => {
+    const { dataCenters } = get();
+    return get().getStatsForDataCenters(dataCenters);
   },
 }));
