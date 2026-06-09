@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Select, Row, Col, Card, Badge, Tag } from 'antd';
+import { Select, Row, Col, Card, Badge, Tag, Button, Radio, Space } from 'antd';
 import {
   Building2,
   Server,
@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   TrendingUp,
   TrendingDown,
+  GitCompare,
+  X,
 } from 'lucide-react';
 import { useDataCenterStore } from '@/store/dataCenterStore';
 import { useAlertStore } from '@/store/alertStore';
@@ -60,6 +62,10 @@ export default function Dashboard() {
   const { metrics, isConnected } = useAllRealtimeData();
   const { canAccessDataCenter } = usePermission();
 
+  const [viewMode, setViewMode] = useState<'normal' | 'compare'>('normal');
+  const [compareType, setCompareType] = useState<'city' | 'dc'>('dc');
+  const [selectedCompareItems, setSelectedCompareItems] = useState<string[]>([]);
+
   const visibleDataCenters = useMemo(() => {
     return dataCenters.filter(dc => canAccessDataCenter(dc.id));
   }, [dataCenters, canAccessDataCenter]);
@@ -69,18 +75,58 @@ export default function Dashboard() {
     return cities.filter(c => dcCityIds.has(c.id));
   }, [cities, visibleDataCenters]);
 
+  const calculateStats = (dataCenters: any[]) => {
+    const onlineDCs = dataCenters.filter(dc => dc.status === 'online');
+    
+    const totalRacks = onlineDCs.reduce((sum, dc) => sum + dc.totalRacks, 0);
+    const totalPower = onlineDCs.reduce((sum, dc) => sum + dc.totalPower, 0);
+    
+    let totalPUE = 0;
+    let totalCarbon = 0;
+    
+    onlineDCs.forEach(dc => {
+      const m = metrics[dc.id] || currentMetrics[dc.id];
+      if (m) {
+        totalPUE += m.pue;
+        totalCarbon += m.carbonEmission;
+      } else {
+        totalPUE += dc.designPUE + (Math.random() * 0.1 - 0.05);
+        totalCarbon += dc.totalPower * 24 * 0.5839 / 1000;
+      }
+    });
+    
+    if (totalCarbon === 0 && visibleCities.length > 0) {
+      const visibleCityIds = new Set(onlineDCs.map(dc => dc.city));
+      totalCarbon = visibleCities
+        .filter(c => visibleCityIds.has(c.id))
+        .reduce((sum, c) => sum + c.totalCarbon, 0);
+    }
+    
+    const avgPUE = onlineDCs.length > 0 ? totalPUE / onlineDCs.length : 1.35;
+    
+    return {
+      totalDataCenters: onlineDCs.length,
+      totalRacks,
+      avgPUE,
+      totalCarbon,
+      totalPower,
+    };
+  };
+
   const stats = useMemo(() => {
     if (selectedDataCenter) {
-      return getStatsForDataCenters([selectedDataCenter]);
+      return calculateStats([selectedDataCenter]);
     } else if (selectedCity) {
       const dcsInCity = visibleDataCenters.filter(dc => dc.city === selectedCity.id);
-      return getStatsForDataCenters(dcsInCity);
+      return calculateStats(dcsInCity);
     }
-    return getStatsForDataCenters(visibleDataCenters);
-  }, [selectedDataCenter, selectedCity, visibleDataCenters, getStatsForDataCenters, metrics, currentMetrics]);
+    return calculateStats(visibleDataCenters);
+  }, [selectedDataCenter, selectedCity, visibleDataCenters, visibleCities, metrics, currentMetrics]);
 
   useEffect(() => {
     resetSelection();
+    setSelectedCompareItems([]);
+    setViewMode('normal');
   }, [currentUser?.id, resetSelection]);
 
   useEffect(() => {
@@ -132,16 +178,6 @@ export default function Dashboard() {
     navigate(`/data-center/${dc.id}`);
   };
 
-  const carbonRankingData = useMemo(() => {
-    return visibleCities
-      .map(city => ({
-        name: city.name,
-        value: city.totalCarbon,
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
-  }, [visibleCities]);
-
   const avgPUE = useMemo(() => {
     if (selectedDataCenter) {
       const m = metrics[selectedDataCenter.id] || currentMetrics[selectedDataCenter.id];
@@ -150,9 +186,53 @@ export default function Dashboard() {
     return stats.avgPUE;
   }, [selectedDataCenter, metrics, currentMetrics, stats.avgPUE]);
 
+  const filteredDataCenters = useMemo(() => {
+    if (selectedCity) {
+      return visibleDataCenters.filter(dc => dc.city === selectedCity.id);
+    }
+    return visibleDataCenters;
+  }, [visibleDataCenters, selectedCity]);
+
   const visibleAlerts = useMemo(() => {
+    if (selectedDataCenter) {
+      return alerts.filter(a => a.dataCenterId === selectedDataCenter.id);
+    }
+    if (selectedCity) {
+      const dcIdsInCity = filteredDataCenters.map(dc => dc.id);
+      return alerts.filter(a => dcIdsInCity.includes(a.dataCenterId));
+    }
     return alerts.filter(a => canAccessDataCenter(a.dataCenterId));
-  }, [alerts, canAccessDataCenter]);
+  }, [alerts, canAccessDataCenter, selectedDataCenter, selectedCity, filteredDataCenters]);
+
+  const carbonRankingData = useMemo(() => {
+    if (selectedCity) {
+      return filteredDataCenters
+        .map(dc => {
+          const m = metrics[dc.id] || currentMetrics[dc.id];
+          const carbon = m ? m.carbonEmission : dc.totalPower * 24 * 0.5839 / 1000;
+          return {
+            name: dc.name,
+            value: carbon,
+          };
+        })
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 8);
+    }
+    return visibleCities
+      .map(city => ({
+        name: city.name,
+        value: city.totalCarbon,
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+  }, [selectedCity, visibleCities, filteredDataCenters, metrics, currentMetrics]);
+
+  const heatMapData = useMemo(() => {
+    if (selectedCity) {
+      return visibleCities.filter(c => c.id === selectedCity.id);
+    }
+    return visibleCities;
+  }, [selectedCity, visibleCities]);
 
   const pendingAlerts = useMemo(() => {
     return visibleAlerts.filter(a =>
@@ -160,13 +240,36 @@ export default function Dashboard() {
     ).length;
   }, [visibleAlerts]);
 
+  const getLatestData = (dcIds: string[]) => {
+    let totalPower = 0;
+    let totalPUE = 0;
+    let count = 0;
+    
+    dcIds.forEach(dcId => {
+      const m = metrics[dcId] || currentMetrics[dcId];
+      if (m) {
+        totalPower += m.totalPower;
+        totalPUE += m.pue;
+        count++;
+      }
+    });
+    
+    return {
+      avgPUE: count > 0 ? totalPUE / count : 1.35,
+      totalPower,
+    };
+  };
+
   const energyTrendData = useMemo(() => {
     let trendData: TrendPoint[] = [];
+    let relevantDCs: string[] = [];
     
     if (selectedDataCenter) {
       trendData = energyTrends[selectedDataCenter.id] || [];
+      relevantDCs = [selectedDataCenter.id];
     } else if (selectedCity) {
       const dcsInCity = visibleDataCenters.filter(dc => dc.city === selectedCity.id);
+      relevantDCs = dcsInCity.map(dc => dc.id);
       dcsInCity.forEach(dc => {
         const dcTrend = energyTrends[dc.id] || [];
         if (trendData.length === 0) {
@@ -180,6 +283,7 @@ export default function Dashboard() {
         }
       });
     } else {
+      relevantDCs = visibleDataCenters.map(dc => dc.id);
       visibleDataCenters.forEach(dc => {
         const dcTrend = energyTrends[dc.id] || [];
         if (trendData.length === 0) {
@@ -194,32 +298,59 @@ export default function Dashboard() {
       });
     }
     
-    return trendData.map(t => ({
+    const latest = getLatestData(relevantDCs);
+    const now = Date.now();
+    const result = trendData.map(t => ({
       timestamp: t.timestamp,
       value: t.value,
     }));
-  }, [selectedDataCenter, selectedCity, visibleDataCenters, energyTrends]);
+    
+    if (result.length > 0 && latest.totalPower > 0) {
+      const lastPoint = result[result.length - 1];
+      const timeDiff = now - lastPoint.timestamp;
+      
+      if (timeDiff < 5 * 60 * 1000) {
+        result[result.length - 1] = {
+          timestamp: now,
+          value: latest.totalPower,
+        };
+      } else {
+        result.push({
+          timestamp: now,
+          value: latest.totalPower,
+        });
+      }
+    }
+    
+    return result;
+  }, [selectedDataCenter, selectedCity, visibleDataCenters, energyTrends, metrics, currentMetrics]);
 
   const pueTrendData = useMemo(() => {
     let pueData: { timestamp: number; value: number }[] = [];
+    let relevantDCs: string[] = [];
     
     if (selectedDataCenter) {
       const trend = energyTrends[selectedDataCenter.id] || [];
-      pueData = trend.map(t => ({
-        timestamp: t.timestamp,
-        value: t.value / 1000 + 1.2,
-      }));
+      relevantDCs = [selectedDataCenter.id];
+      pueData = trend.map(t => {
+        const m = metrics[selectedDataCenter.id] || currentMetrics[selectedDataCenter.id];
+        return {
+          timestamp: t.timestamp,
+          value: m ? m.pue : (t.value / 1000 + 1.2),
+        };
+      });
     } else {
-      const relevantDCs = selectedCity 
+      const dcs = selectedCity 
         ? visibleDataCenters.filter(dc => dc.city === selectedCity.id)
         : visibleDataCenters;
+      relevantDCs = dcs.map(dc => dc.id);
       
-      if (relevantDCs.length > 0) {
-        const firstDCTrend = energyTrends[relevantDCs[0].id] || [];
+      if (dcs.length > 0) {
+        const firstDCTrend = energyTrends[dcs[0].id] || [];
         pueData = firstDCTrend.map((t, i) => {
           let totalPUE = 0;
           let count = 0;
-          relevantDCs.forEach(dc => {
+          dcs.forEach(dc => {
             const dcTrend = energyTrends[dc.id] || [];
             if (dcTrend[i]) {
               const m = metrics[dc.id] || currentMetrics[dc.id];
@@ -231,6 +362,26 @@ export default function Dashboard() {
             timestamp: t.timestamp,
             value: count > 0 ? totalPUE / count : 1.35,
           };
+        });
+      }
+    }
+    
+    const latest = getLatestData(relevantDCs);
+    const now = Date.now();
+    
+    if (pueData.length > 0) {
+      const lastPoint = pueData[pueData.length - 1];
+      const timeDiff = now - lastPoint.timestamp;
+      
+      if (timeDiff < 5 * 60 * 1000) {
+        pueData[pueData.length - 1] = {
+          timestamp: now,
+          value: latest.avgPUE,
+        };
+      } else {
+        pueData.push({
+          timestamp: now,
+          value: latest.avgPUE,
         });
       }
     }
@@ -272,6 +423,16 @@ export default function Dashboard() {
             onChange={(val) => {
               const city = visibleCities.find(c => c.id === val);
               selectCity(city || null);
+              if (city) {
+                const dcsInCity = visibleDataCenters.filter(dc => dc.city === city.id);
+                if (selectedDataCenter && !dcsInCity.find(dc => dc.id === selectedDataCenter.id)) {
+                  selectDataCenter(dcsInCity[0] || null);
+                }
+              } else {
+                if (selectedDataCenter) {
+                  selectDataCenter(null);
+                }
+              }
             }}
             allowClear
           >
@@ -288,10 +449,17 @@ export default function Dashboard() {
             onChange={(val) => {
               const dc = visibleDataCenters.find(d => d.id === val);
               selectDataCenter(dc || null);
+              if (dc && (!selectedCity || dc.city !== selectedCity.id)) {
+                const city = visibleCities.find(c => c.id === dc.city);
+                selectCity(city || null);
+              }
             }}
             allowClear
           >
-            {visibleDataCenters.map(dc => (
+            {(selectedCity 
+              ? visibleDataCenters.filter(dc => dc.city === selectedCity.id)
+              : visibleDataCenters
+            ).map(dc => (
               <Option key={dc.id} value={dc.id}>
                 {dc.name}
               </Option>
@@ -368,7 +536,7 @@ export default function Dashboard() {
               </div>
             </div>
             <HeatMap
-              data={visibleCities}
+              data={heatMapData}
               onCityClick={handleCityClick}
               height={400}
             />
@@ -430,11 +598,11 @@ export default function Dashboard() {
         <Col xs={24} lg={10}>
           <Card className="glass-card border-border/50">
             <h3 className="text-lg font-semibold text-text-primary mb-4">
-              城市碳排放排名
+              {selectedCity ? '机房碳排放排名' : '城市碳排放排名'}
             </h3>
             <BarChart
               data={carbonRankingData}
-              name="碳排放(吨)"
+              name={selectedCity ? '碳排放(吨)' : '碳排放(吨)'}
               colors={['#FF4757', '#FFA502', '#2ED573', '#00D4FF', '#A55EEA']}
               height={280}
               horizontal
@@ -447,14 +615,14 @@ export default function Dashboard() {
       <Card className="glass-card border-border/50">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-text-primary">
-            机房列表
+            {selectedCity ? `${selectedCity.name} - ` : ''}机房列表
           </h3>
           <span className="text-sm text-text-tertiary">
             点击机房卡片查看详情
           </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {visibleDataCenters.map((dc, index) => {
+          {filteredDataCenters.map((dc, index) => {
             const dcMetrics = metrics[dc.id];
             return (
               <motion.div
